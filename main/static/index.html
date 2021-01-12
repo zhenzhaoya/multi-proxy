@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html style="height: 100%">
+
+<head>
+  <meta charset="utf-8">
+
+  <link href="css/main.css" rel="stylesheet">
+  <link href="https://cdn.staticfile.org/twitter-bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body>
+  <div class="navbar navbar-inverse navbar-fixed-top">
+    <div class="container">
+      <div class="navbar-header">
+        <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+          <span class="icon-bar"></span> <span class="icon-bar"></span> <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="#">Stress Test</a>
+      </div>
+      <div class="navbar-collapse collapse">
+        <ul class="nav navbar-nav">
+          <li><a href="./index.html">Home</a></li>
+          <li><a href="./config.html">Setting</a></li>
+          <li><a href="./collect-cookie.html">Collect</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="container body-content">
+    <h2>Cache</h2>
+    <form class="form" id="myForm" name="myForm" method="get">
+      <div class="col-md-12">
+        <div class="row">
+          <div class="form-group">
+            <label class="col-md-2 control-label"></label>
+            <div class="col-md-10">
+              <textarea class="form-control input-long" id="data" rows="15" cols="20"></textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-12">
+        <div class="row">
+          <div class="form-group">
+            <label class="col-md-2 control-label"></label>
+            <div class="col-md-10">
+              <input type="button" value="Set" onclick="return mySubmit();" /><span id="spMsg"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+  <script type="text/javascript" src="https://cdn.staticfile.org/jquery/2.1.1/jquery.min.js"></script>
+  <script type="text/javascript" src="https://cdn.staticfile.org/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script>
+  <script type="text/javascript">
+    function getConfig() {
+      $.get("../cache", function (d, status) {
+        if (status == "success") {
+          $("#data").html(JSON.stringify(d.Data, null, 4))
+        } else {
+          $("#spMsg").html(status);
+        }
+      });
+    }
+    getConfig();
+    function mySubmit() {
+      $("#spMsg").html('');
+      $.post("../cache", $("#data").val(), function (d, status) {
+        if (status == 200) {
+          $("#spMsg").html(d.message);
+        } else {
+          $("#spMsg").html(status);
+        }
+      });
+    }
+  </script>
+</body>
+
+</html>
