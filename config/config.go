@@ -18,10 +18,11 @@ type ProxyEx struct {
 	Https []string
 }
 type DomainSub struct {
-	Url    string // 遇到时进行cookie，useragent，ip等缓存。同时清除cookie，修改useragent、ip
-	Domain string
-	Cookie string
-	Proxy  bool
+	Url        string // 遇到时进行cookie，useragent，ip等缓存。同时清除cookie，修改useragent、ip
+	Domain     string
+	Cookie     string
+	CookiePath string
+	Proxy      bool
 }
 type DomainEx struct {
 	Allow    []*DomainSub

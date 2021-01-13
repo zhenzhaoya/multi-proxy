@@ -2,14 +2,11 @@ package multiproxy
 
 import (
 	"bytes"
-	"crypto/tls"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"strings"
-	"time"
 
 	"github.com/zhenzhaoya/multiproxy/config"
 	"github.com/zhenzhaoya/multiproxy/utils"
@@ -90,9 +87,12 @@ func (self *ProxyEx) setCookie(r *http.Request) *UserCache {
 	return nil
 }
 
-func (self *ProxyEx) cacheCookie(resp *http.Response, r *http.Request, p string) []string {
+func (self *ProxyEx) cacheCookie(resp *http.Response, r *http.Request, p string) (string, []string) {
 	domain := self.getDomainSub(r.RequestURI)
 	if domain != nil && domain.Cookie != "" {
+		if domain.Url != "" && r.RequestURI != domain.Url {
+			return "", nil
+		}
 		var caches []*UserCache = self.userCache[r.Host]
 		if caches == nil {
 			caches = make([]*UserCache, 0)
@@ -101,8 +101,8 @@ func (self *ProxyEx) cacheCookie(resp *http.Response, r *http.Request, p string)
 		vv := resp.Cookies()
 		kv := make(H)
 		var cookie = []string{}
+		sid := ""
 		if vv != nil && len(vv) > 0 {
-			sid := ""
 			for _, v := range vv {
 				if v.Name == domain.Cookie {
 					sid = v.Value
@@ -110,7 +110,8 @@ func (self *ProxyEx) cacheCookie(resp *http.Response, r *http.Request, p string)
 				kv[v.Name] = "1"
 				cookie = append(cookie, v.Name+"="+v.Value)
 			}
-
+		}
+		if len(cookie) > 0 || r.RequestURI == domain.Url {
 			cookies := r.Header["Cookie"]
 			if cookies != nil && len(cookies) > 0 {
 				for _, v := range cookies {
@@ -147,29 +148,38 @@ func (self *ProxyEx) cacheCookie(resp *http.Response, r *http.Request, p string)
 				cache.Cookie = cookie
 				caches = append(caches, cache)
 				self.userCache[r.Host] = caches
-				return cookie
+				return domain.CookiePath, cookie
 			}
 			cache.Cookie = cookie
 		}
 	}
-	return nil
+	return "", nil
 }
 
-func clearCookie(w *http.Response, cookies []string) {
+func clearCookie(w *http.Response, cookies []string, path string) {
+	var value = ""
 	for i := range cookies {
-		expire := time.Now().Add(-time.Hour)
 		cookie := http.Cookie{
-			Name:    strings.Split(cookies[i], "=")[0],
-			Value:   "",
-			Expires: expire,
+			Name:  strings.Split(cookies[i], "=")[0],
+			Value: "",
+			Path:  "/yiye.mgt",
 		}
-		w.Header.Set("Set-Cookie", cookie.String())
+		if value == "" {
+			value = cookie.String() + "; Max-Age=-1"
+		} else {
+			value = value + "; " + cookie.String() + "; Max-Age=-1"
+		}
+	}
+	if value == "" {
+		w.Header.Del("Set-Cookie")
+	} else {
+		w.Header.Set("Set-Cookie", value)
 	}
 }
 
-func (self *ProxyEx) proxyHandler(w *http.Response, r *http.Request) {
-	self.handleHttp(w, r)
-}
+// func (self *ProxyEx) proxyHandler(w *http.Response, r *http.Request) {
+// 	self.handleHttp(w, r)
+// }
 
 func (self *ProxyEx) logRequest(req *http.Request) {
 	config := self.config.Log
@@ -215,50 +225,50 @@ func (self *ProxyEx) logRequest(req *http.Request) {
 	}
 }
 
-func (self *ProxyEx) handleHttp(res *http.Response, r *http.Request) {
-	if self.beforeRequest(r) { // API
-		return
-	}
+// func (self *ProxyEx) handleHttp(res *http.Response, r *http.Request) {
+// 	if self.beforeRequest(r) { // API
+// 		return
+// 	}
 
-	cache := self.setCookie(r)
-	self.setUserAgent(r, cache)
+// 	cache := self.setCookie(r)
+// 	self.setUserAgent(r, cache)
 
-	var tr *http.Transport = nil
-	var resp *http.Response = nil
-	var err error = nil
-	p := self.getProxy(r, cache)
-	if p != "" {
-		proxyUrl, _ := url.Parse("http://" + p)
-		tr = &http.Transport{
-			Proxy:              http.ProxyURL(proxyUrl),
-			TLSClientConfig:    &tls.Config{InsecureSkipVerify: true},
-			DisableCompression: true,
-		}
-		resp, err = tr.RoundTrip(r)
-	} else {
-		resp, err = http.DefaultTransport.RoundTrip(r)
-	}
+// 	var tr *http.Transport = nil
+// 	var resp *http.Response = nil
+// 	var err error = nil
+// 	p := self.getProxy(r, cache)
+// 	if p != "" {
+// 		proxyUrl, _ := url.Parse("http://" + p)
+// 		tr = &http.Transport{
+// 			Proxy:              http.ProxyURL(proxyUrl),
+// 			TLSClientConfig:    &tls.Config{InsecureSkipVerify: true},
+// 			DisableCompression: true,
+// 		}
+// 		resp, err = tr.RoundTrip(r)
+// 	} else {
+// 		resp, err = http.DefaultTransport.RoundTrip(r)
+// 	}
 
-	if err != nil {
-		res.StatusCode = http.StatusServiceUnavailable
-		// http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-	defer resp.Body.Close()
+// 	if err != nil {
+// 		res.StatusCode = http.StatusServiceUnavailable
+// 		// http.Error(w, err.Error(), http.StatusServiceUnavailable)
+// 		return
+// 	}
+// 	defer resp.Body.Close()
 
-	self.afterResponse(resp, r, p) // API
-	cookies := self.cacheCookie(resp, r, p)
-	if cookies != nil {
-		clearCookie(res, cookies)
-		res.Header.Set("Content-type", "application/json")
-		setResponseBodyWithStr(res, GetResponse(200, "success"))
-		return
-	}
+// 	self.afterResponse(resp, r, p) // API
+// 	cookies := self.cacheCookie(resp, r, p)
+// 	if cookies != nil {
+// 		clearCookie(res, cookies)
+// 		res.Header.Set("Content-type", "application/json")
+// 		setResponseBodyWithStr(res, GetResponse(200, "success"))
+// 		return
+// 	}
 
-	copyHeader(res.Header, resp.Header)
-	res.StatusCode = resp.StatusCode
-	setResponseBodyWithReader(res, resp.Body)
-}
+// 	copyHeader(res.Header, resp.Header)
+// 	res.StatusCode = resp.StatusCode
+// 	setResponseBodyWithReader(res, resp.Body)
+// }
 
 func (self *ProxyEx) handleHttps(w http.ResponseWriter, r *http.Request) {
 	// if self.beforeRequest(w, r) { // API
@@ -292,13 +302,13 @@ func (self *ProxyEx) handleHttps(w http.ResponseWriter, r *http.Request) {
 	// go transfer(clientConn, destConn)
 }
 
-func (self *ProxyEx) beforeRequest(r *http.Request) bool {
-	self.logRequest(r)
-	// if self.BeforeRequest != nil {
-	// 	return self.BeforeRequest(res, r)
-	// }
-	return false
-}
+// func (self *ProxyEx) beforeRequest(r *http.Request) bool {
+// 	self.logRequest(r)
+// 	// if self.BeforeRequest != nil {
+// 	// 	return self.BeforeRequest(res, r)
+// 	// }
+// 	return false
+// }
 
 func (self *ProxyEx) afterResponse(resp *http.Response, r *http.Request, p string) {
 	if self.AfterResponse != nil {
