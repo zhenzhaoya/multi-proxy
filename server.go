@@ -42,10 +42,11 @@ func json2userCache(b []byte) (map[string][]*UserCache, error) {
 	return c, err
 }
 
-var logger = log.New(os.Stderr, "multi-proxy:", log.Llongfile|log.LstdFlags)
+var logFile, _ = os.OpenFile(`./multi_proxy.log`, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+var logger = log.New(logFile, "multiproxy:", log.Llongfile|log.LstdFlags)
 
 func GetAPP() *ProxyEx {
-	app := &ProxyEx{userCache: make(map[string][]*UserCache), collectCookie: true}
+	app := &ProxyEx{userCache: make(map[string][]*UserCache), collectCookie: false}
 	return app
 }
 

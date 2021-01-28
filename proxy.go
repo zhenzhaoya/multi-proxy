@@ -24,6 +24,13 @@ func getCookie(c string, r *http.Request) string {
 	return ""
 }
 
+func getAbsoluteUrl(req *http.Request) string {
+	if strings.HasPrefix(req.RequestURI, "/") {
+		return req.URL.Scheme + "://" + req.Host + req.RequestURI
+	}
+	return req.RequestURI
+}
+
 func (self *ProxyEx) getDomainSub(value string) *config.DomainSub {
 	domain := self.config.Domain
 	if domain == nil || domain.Allow == nil {
@@ -57,7 +64,7 @@ func (self *ProxyEx) getProxy(r *http.Request, cache *UserCache) string {
 		return ""
 	}
 
-	domain := self.getDomainSub(r.RequestURI)
+	domain := self.getDomainSub(r.Host)
 	p := ""
 	if domain != nil && domain.Proxy {
 		if cache != nil {
@@ -75,7 +82,7 @@ func (self *ProxyEx) setCookie(r *http.Request) *UserCache {
 	if self.collectCookie {
 		return nil // when collecting, do not modify
 	}
-	domain := self.getDomainSub(r.RequestURI)
+	domain := self.getDomainSub(r.Host)
 	if domain != nil && domain.Cookie != "" {
 		var caches []*UserCache = self.userCache[r.Host]
 		if caches != nil && len(caches) > 0 {
@@ -88,9 +95,9 @@ func (self *ProxyEx) setCookie(r *http.Request) *UserCache {
 }
 
 func (self *ProxyEx) cacheCookie(resp *http.Response, r *http.Request, p string) (string, []string) {
-	domain := self.getDomainSub(r.RequestURI)
+	domain := self.getDomainSub(r.Host)
 	if domain != nil && domain.Cookie != "" {
-		if domain.Url != "" && r.RequestURI != domain.Url {
+		if domain.Url != "" && getAbsoluteUrl(r) != domain.Url {
 			return "", nil
 		}
 		var caches []*UserCache = self.userCache[r.Host]
@@ -111,7 +118,7 @@ func (self *ProxyEx) cacheCookie(resp *http.Response, r *http.Request, p string)
 				cookie = append(cookie, v.Name+"="+v.Value)
 			}
 		}
-		if len(cookie) > 0 || r.RequestURI == domain.Url {
+		if len(cookie) > 0 || getAbsoluteUrl(r) == domain.Url {
 			cookies := r.Header["Cookie"]
 			if cookies != nil && len(cookies) > 0 {
 				for _, v := range cookies {
@@ -162,7 +169,7 @@ func clearCookie(w *http.Response, cookies []string, path string) {
 		cookie := http.Cookie{
 			Name:  strings.Split(cookies[i], "=")[0],
 			Value: "",
-			Path:  "/yiye.mgt",
+			Path:  path,
 		}
 		if value == "" {
 			value = cookie.String() + "; Max-Age=-1"
@@ -177,16 +184,20 @@ func clearCookie(w *http.Response, cookies []string, path string) {
 	}
 }
 
-// func (self *ProxyEx) proxyHandler(w *http.Response, r *http.Request) {
-// 	self.handleHttp(w, r)
-// }
+func (self *ProxyEx) logWriter(v ...interface{}) {
+	if self.config.Log2File {
+		logger.Println(v...)
+	} else {
+		log.Println(v...)
+	}
+}
 
 func (self *ProxyEx) logRequest(req *http.Request) {
 	config := self.config.Log
 	if config.Allow != nil && len(config.Allow) > 0 {
 		f := false
 		for _, v := range config.Allow {
-			if strings.Contains(req.RequestURI, v) {
+			if strings.Contains(req.Host, v) {
 				f = true
 				break
 			}
@@ -197,20 +208,20 @@ func (self *ProxyEx) logRequest(req *http.Request) {
 	}
 
 	if config.Url {
-		log.Println(req.Method, req.RequestURI)
+		self.logWriter(req.Method, getAbsoluteUrl(req))
 	}
 
 	if config.Header {
 		for k, vv := range req.Header {
 			for _, v := range vv {
-				log.Println(k, v)
+				self.logWriter(k, v)
 			}
 		}
 	} else if config.HeaderKey != nil && len(config.HeaderKey) > 0 {
 		for k, vv := range req.Header {
 			if utils.ArrContains(config.HeaderKey, k) {
 				for _, v := range vv {
-					log.Println(k, v)
+					self.logWriter(k, v)
 				}
 			}
 		}
@@ -219,56 +230,11 @@ func (self *ProxyEx) logRequest(req *http.Request) {
 	if config.Body && req.Body != nil {
 		b, err := ioutil.ReadAll(req.Body)
 		if err == nil {
-			log.Println(string(b))
+			self.logWriter(string(b))
 			req.Body = ioutil.NopCloser(bytes.NewBuffer(b))
 		}
 	}
 }
-
-// func (self *ProxyEx) handleHttp(res *http.Response, r *http.Request) {
-// 	if self.beforeRequest(r) { // API
-// 		return
-// 	}
-
-// 	cache := self.setCookie(r)
-// 	self.setUserAgent(r, cache)
-
-// 	var tr *http.Transport = nil
-// 	var resp *http.Response = nil
-// 	var err error = nil
-// 	p := self.getProxy(r, cache)
-// 	if p != "" {
-// 		proxyUrl, _ := url.Parse("http://" + p)
-// 		tr = &http.Transport{
-// 			Proxy:              http.ProxyURL(proxyUrl),
-// 			TLSClientConfig:    &tls.Config{InsecureSkipVerify: true},
-// 			DisableCompression: true,
-// 		}
-// 		resp, err = tr.RoundTrip(r)
-// 	} else {
-// 		resp, err = http.DefaultTransport.RoundTrip(r)
-// 	}
-
-// 	if err != nil {
-// 		res.StatusCode = http.StatusServiceUnavailable
-// 		// http.Error(w, err.Error(), http.StatusServiceUnavailable)
-// 		return
-// 	}
-// 	defer resp.Body.Close()
-
-// 	self.afterResponse(resp, r, p) // API
-// 	cookies := self.cacheCookie(resp, r, p)
-// 	if cookies != nil {
-// 		clearCookie(res, cookies)
-// 		res.Header.Set("Content-type", "application/json")
-// 		setResponseBodyWithStr(res, GetResponse(200, "success"))
-// 		return
-// 	}
-
-// 	copyHeader(res.Header, resp.Header)
-// 	res.StatusCode = resp.StatusCode
-// 	setResponseBodyWithReader(res, resp.Body)
-// }
 
 func (self *ProxyEx) handleHttps(w http.ResponseWriter, r *http.Request) {
 	// if self.beforeRequest(w, r) { // API
@@ -302,14 +268,6 @@ func (self *ProxyEx) handleHttps(w http.ResponseWriter, r *http.Request) {
 	// go transfer(clientConn, destConn)
 }
 
-// func (self *ProxyEx) beforeRequest(r *http.Request) bool {
-// 	self.logRequest(r)
-// 	// if self.BeforeRequest != nil {
-// 	// 	return self.BeforeRequest(res, r)
-// 	// }
-// 	return false
-// }
-
 func (self *ProxyEx) afterResponse(resp *http.Response, r *http.Request, p string) {
 	if self.AfterResponse != nil {
 		self.AfterResponse(resp, r)
@@ -334,6 +292,7 @@ func copyHeader(dst, src http.Header) {
 func setResponseBodyWithStr(res *http.Response, buf string) {
 	res.Body = ioutil.NopCloser(bytes.NewReader([]byte(buf)))
 }
+
 func setResponseBodyWithReader(res *http.Response, body io.ReadCloser) error {
 	buf, err := ioutil.ReadAll(res.Body)
 	if err != nil {
@@ -342,6 +301,7 @@ func setResponseBodyWithReader(res *http.Response, body io.ReadCloser) error {
 	res.Body = ioutil.NopCloser(bytes.NewReader(buf))
 	return nil
 }
+
 func setResponseBody(res *http.Response, buf []byte) {
 	res.Body = ioutil.NopCloser(bytes.NewReader(buf))
 }

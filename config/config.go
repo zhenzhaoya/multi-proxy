@@ -4,13 +4,10 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"log"
-	"os"
 	"strings"
 
 	"github.com/zhenzhaoya/multiproxy/utils"
 )
-
-var logger = log.New(os.Stderr, "multiproxy:", log.Llongfile|log.LstdFlags)
 
 type ProxyEx struct {
 	All   []string
@@ -44,6 +41,7 @@ type Config struct {
 	UserAgent []string
 	Log       *LogEx
 	Port      string
+	Log2File  bool
 }
 
 func (self *Config) GetProxy(proto string) string {
@@ -105,7 +103,7 @@ func NewConfig(configPath string) *Config {
 	if err == nil {
 		c, err = Json2Config(dat)
 		if err != nil {
-			logger.Println("error: ", err)
+			log.Println("config error: ", err)
 		}
 	}
 	if err != nil {
