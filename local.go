@@ -144,6 +144,10 @@ func (self *ProxyEx) execHandler(w http.ResponseWriter, r *http.Request) {
 			setContentType(w, path)
 			io.WriteString(w, _indexHtml)
 			return
+		} else if path == "/" {
+			w.Header().Set("Location", "/static/index.html")
+			w.WriteHeader(302)
+			return
 		}
 	} else if r.Method == "POST" {
 		w.Header().Set("Content-type", "application/json")

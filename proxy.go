@@ -25,10 +25,11 @@ func getCookie(c string, r *http.Request) string {
 }
 
 func getAbsoluteUrl(req *http.Request) string {
-	if strings.HasPrefix(req.RequestURI, "/") {
-		return req.URL.Scheme + "://" + req.Host + req.RequestURI
-	}
-	return req.RequestURI
+	return req.URL.Scheme + "://" + req.Host + req.URL.Path
+	// if strings.HasPrefix(req.RequestURI, "/") {
+	// 	return req.URL.Scheme + "://" + req.Host + req.URL.Path
+	// }
+	// return req.RequestURI
 }
 
 func (self *ProxyEx) getDomainSub(value string) *config.DomainSub {
@@ -95,6 +96,9 @@ func (self *ProxyEx) setCookie(r *http.Request) *UserCache {
 }
 
 func (self *ProxyEx) cacheCookie(resp *http.Response, r *http.Request, p string) (string, []string) {
+	// if !self.collectCookie {
+	// 	return "", nil
+	// }
 	domain := self.getDomainSub(r.Host)
 	if domain != nil && domain.Cookie != "" {
 		if domain.Url != "" && getAbsoluteUrl(r) != domain.Url {
@@ -192,19 +196,87 @@ func (self *ProxyEx) logWriter(v ...interface{}) {
 	}
 }
 
-func (self *ProxyEx) logRequest(req *http.Request) {
-	config := self.config.Log
+func (self *ProxyEx) logBody(name string, body string) {
+	utils.SaveFile("./resource/"+strings.Replace(name, "/", "_", -1), body)
+}
+
+func (self *ProxyEx) logResponse(resp *http.Response, req *http.Request) {
+	config := self.config.LogResp
+	f := false
 	if config.Allow != nil && len(config.Allow) > 0 {
-		f := false
 		for _, v := range config.Allow {
-			if strings.Contains(req.Host, v) {
+			if strings.Contains(getAbsoluteUrl(req), v) {
 				f = true
 				break
 			}
 		}
-		if !f {
+		if !f { // Allow与Ends与的关系
 			return
 		}
+	}
+	if !f && config.Ends != nil && len(config.Ends) > 0 {
+		f = false
+		for _, v := range config.Ends {
+			if strings.HasSuffix(req.URL.Path, v) {
+				f = true
+				break
+			}
+		}
+	}
+	if !f {
+		return
+	}
+
+	if config.Url {
+		self.logWriter("response", getAbsoluteUrl(req))
+	}
+
+	if config.Header {
+		for k, vv := range resp.Header {
+			for _, v := range vv {
+				self.logWriter(k, v)
+			}
+		}
+	} else if config.HeaderKey != nil && len(config.HeaderKey) > 0 {
+		for k, vv := range resp.Header {
+			if utils.ArrContains(config.HeaderKey, k) {
+				for _, v := range vv {
+					self.logWriter(k, v)
+				}
+			}
+		}
+	}
+
+	if config.Body && resp.Body != nil {
+		b, err := ioutil.ReadAll(resp.Body)
+		if err == nil {
+			self.logBody(req.Method+req.URL.Path, string(b))
+			resp.Body = ioutil.NopCloser(bytes.NewBuffer(b))
+		}
+	}
+}
+
+func (self *ProxyEx) logRequest(req *http.Request) {
+	config := self.config.Log
+	f := false
+	if config.Allow != nil && len(config.Allow) > 0 {
+		for _, v := range config.Allow {
+			if strings.Contains(getAbsoluteUrl(req), v) {
+				f = true
+				break
+			}
+		}
+	}
+	if !f && config.Ends != nil && len(config.Ends) > 0 {
+		for _, v := range config.Ends {
+			if strings.HasSuffix(req.URL.Path, v) {
+				f = true
+				break
+			}
+		}
+	}
+	if !f {
+		return
 	}
 
 	if config.Url {
@@ -269,6 +341,7 @@ func (self *ProxyEx) handleHttps(w http.ResponseWriter, r *http.Request) {
 }
 
 func (self *ProxyEx) afterResponse(resp *http.Response, r *http.Request, p string) {
+	self.logResponse(resp, r)
 	if self.AfterResponse != nil {
 		self.AfterResponse(resp, r)
 	}

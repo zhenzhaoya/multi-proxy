@@ -89,7 +89,7 @@ func (e *EventHandler) BeforeResponse(ctx *goproxy.Context, resp *http.Response,
 	}
 	self.afterResponse(resp, r, p) // API
 	path, cookies := self.cacheCookie(resp, r, p)
-	if cookies != nil {
+	if self.collectCookie && cookies != nil {
 		clearCookie(resp, cookies, path)
 		resp.Header.Add("Content-type", "application/json")
 		setResponseBodyWithStr(resp, GetResponse(200, "success"))

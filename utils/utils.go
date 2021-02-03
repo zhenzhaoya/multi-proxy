@@ -1,8 +1,10 @@
 package utils
 
 import (
+	"bufio"
 	"io/ioutil"
 	"math/rand"
+	"os"
 	"strings"
 	"time"
 )
@@ -68,4 +70,30 @@ func ArrContainsOr(arr []string, values []string) bool {
 }
 func Trim(str string) string {
 	return strings.Trim(str, " ")
+}
+
+func PathExists(path string) bool {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true
+	}
+	if os.IsNotExist(err) {
+		return false
+	}
+	return false
+}
+func SaveFile(path string, content string) error {
+	mode := os.O_CREATE
+	if PathExists(path) {
+		mode = os.O_TRUNC
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|mode, 0666)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	writer := bufio.NewWriter(file)
+	writer.WriteString(content)
+	writer.Flush()
+	return nil
 }
